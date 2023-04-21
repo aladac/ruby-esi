@@ -127,7 +127,7 @@ module ESI
     def initialize
       @scheme = 'https'
       @host = 'esi.evetech.net'
-      @base_path = 'https://esi.evetech.net/latest'
+      @base_path = '/latest'
       @api_key = {}
       @api_key_prefix = {}
       @timeout = 0

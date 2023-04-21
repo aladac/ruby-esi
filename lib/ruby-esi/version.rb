@@ -10,5 +10,5 @@ Swagger Codegen version: 3.0.42
 =end
 
 module ESI
-  VERSION = '0.5.0'
+  VERSION = '0.5.1'
 end
