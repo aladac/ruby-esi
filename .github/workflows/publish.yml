@@ -125,10 +125,13 @@ jobs:
           git tag -a "v${{ needs.check-version.outputs.esi_version }}" -m "Release v${{ needs.check-version.outputs.esi_version }}"
           git push origin main --tags
       
-      - name: Publish to RubyGems via Trusted Publishing
-        uses: rubygems/release-gem@v1
-        with:
-          working-directory: ./ruby-esi
+      - name: Configure RubyGems credentials via Trusted Publishing
+        uses: rubygems/configure-rubygems-credentials@v1.0.0
+      
+      - name: Publish to RubyGems
+        working-directory: ./ruby-esi
+        run: |
+          gem push ruby-esi-${{ needs.check-version.outputs.esi_version }}.gem
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
