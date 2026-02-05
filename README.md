@@ -33,6 +33,8 @@ EVE Online's ESI uses a [compatibility date system](https://developers.eveonline
 
 ## Installation
 
+### From RubyGems (Recommended)
+
 ```bash
 gem install ruby-esi
 ```
@@ -42,6 +44,28 @@ Or add to your Gemfile:
 ```ruby
 gem 'ruby-esi'
 ```
+
+### From GitHub Packages
+
+If you prefer to use GitHub Packages:
+
+```bash
+# Configure bundler to use GitHub Packages
+bundle config set --global https://rubygems.pkg.github.com/aladac GITHUB_TOKEN
+
+# Install the gem
+gem install ruby-esi --source "https://rubygems.pkg.github.com/aladac"
+```
+
+Or add to your Gemfile:
+
+```ruby
+source 'https://rubygems.pkg.github.com/aladac' do
+  gem 'ruby-esi'
+end
+```
+
+**Note**: GitHub Packages requires authentication. Generate a [Personal Access Token](https://github.com/settings/tokens) with `read:packages` scope and use it as your `GITHUB_TOKEN`.
 
 ## Usage
 
@@ -61,12 +85,22 @@ alliances = client.get_alliances
 
 See the [generated documentation](https://rubygems.org/gems/ruby-esi) or [ESI docs](https://docs.esi.evetech.net/) for available endpoints.
 
-## Workflow
+## Workflows
 
-The GitHub Actions workflow (`.github/workflows/publish.yml`) runs:
+### Main Publishing Workflow (`publish.yml`)
+
+The main workflow (`.github/workflows/publish.yml`) runs:
 
 - **Daily at 00:00 UTC** - Automatic check for version updates
 - **Manually** - Via workflow dispatch with optional force build
+
+### GitHub Packages Workflow (`package.yml`)
+
+The package workflow (`.github/workflows/package.yml`) runs:
+
+- **On tag push** - Automatically publishes to GitHub Packages when a new version tag is created
+- **Manually** - Via workflow dispatch (optionally specify version, defaults to latest tag)
+- **Smart duplicate detection** - Checks if version already exists before publishing
 
 ### Build Process
 
@@ -84,6 +118,7 @@ The GitHub Actions workflow (`.github/workflows/publish.yml`) runs:
    - Commits generated code to repository
    - Creates git tag (e.g., `v1.36.2025.12.16`)
    - Publishes to RubyGems via [trusted publishing](https://guides.rubygems.org/trusted-publishing/) (OIDC)
+   - Publishes to GitHub Packages (triggered by tag)
    - Creates GitHub release with gem artifact
 
 ## Breaking Changes from v0.6.0
