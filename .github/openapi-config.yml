@@ -1,6 +1,0 @@
-# OpenAPI Generator configuration for ruby-esi gem
-# This file can be used to customize generator behavior
-# See: https://openapi-generator.tech/docs/generators/ruby/
-
-# Generator-specific settings can be added here
-# For now, we use command-line args in the workflow

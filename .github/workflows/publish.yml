@@ -103,7 +103,6 @@ jobs:
         with:
           generator: ruby
           openapi-file: openapi.yaml
-          config-file: .github/openapi-config.yml
           command-args: -o ./ruby-esi --additional-properties=gemName=ruby-esi,moduleName=ESI,gemVersion=${{ needs.check-version.outputs.esi_version }}
       
       - name: Build gem
