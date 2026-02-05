@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:esi.evetech.net)",
+      "WebFetch(domain:developers.eveonline.com)"
+    ]
+  }
+}

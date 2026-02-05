@@ -1,0 +1,151 @@
+name: Build and Publish Ruby ESI Gem
+
+on:
+  schedule:
+    # Check for updates daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if version unchanged'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      esi_version: ${{ steps.fetch_version.outputs.version }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Fetch ESI OpenAPI spec version
+        id: fetch_version
+        run: |
+          # Get the latest compatibility date (use today's date to get the most recent version)
+          TODAY=$(date +%Y-%m-%d)
+          COMPAT_DATE=$(curl -sI "https://esi.evetech.net/meta/openapi.yaml?compatibility_date=$TODAY" | grep -i "x-compatibility-date:" | awk '{print $2}' | tr -d '\r')
+          
+          # Get API version from the JSON spec (cleaner than YAML)
+          API_VERSION=$(curl -s https://esi.evetech.net/latest/swagger.json | jq -r '.info.version')
+          
+          # Combine API version with compatibility date: e.g., 1.36.2025.12.16
+          DATE_PARTS=$(echo $COMPAT_DATE | tr '-' '.')
+          ESI_VERSION="${API_VERSION}.${DATE_PARTS}"
+          
+          echo "version=$ESI_VERSION" >> $GITHUB_OUTPUT
+          echo "compat_date=$COMPAT_DATE" >> $GITHUB_OUTPUT
+          echo "ESI API Version: $API_VERSION"
+          echo "ESI Compatibility Date: $COMPAT_DATE"
+          echo "Combined Gem Version: $ESI_VERSION"
+      
+      - name: Get last built version
+        id: last_version
+        run: |
+          # Check if we have a previous build tag
+          LAST_VERSION=$(git tag -l 'v*' --sort=-v:refname | head -n 1 | sed 's/^v//')
+          if [ -z "$LAST_VERSION" ]; then
+            LAST_VERSION="0.0.0"
+          fi
+          echo "version=$LAST_VERSION" >> $GITHUB_OUTPUT
+          echo "Last built version: $LAST_VERSION"
+      
+      - name: Compare versions
+        id: compare
+        run: |
+          ESI_VERSION="${{ steps.fetch_version.outputs.version }}"
+          LAST_VERSION="${{ steps.last_version.outputs.version }}"
+          FORCE_BUILD="${{ inputs.force_build }}"
+          
+          if [ "$FORCE_BUILD" = "true" ]; then
+            echo "Force build requested"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "$ESI_VERSION" != "$LAST_VERSION" ]; then
+            echo "Version changed: $LAST_VERSION -> $ESI_VERSION"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $ESI_VERSION"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-publish:
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+      
+      - name: Generate Ruby gem from OpenAPI spec
+        run: |
+          # Use the saved compatibility date from the check-version job
+          COMPAT_DATE="${{ needs.check-version.outputs.compat_date }}"
+          echo "Downloading OpenAPI spec for compatibility date: $COMPAT_DATE"
+          curl -s "https://esi.evetech.net/meta/openapi.yaml?compatibility_date=$COMPAT_DATE" -o openapi.yaml
+        
+      - name: Generate Ruby client with OpenAPI Generator
+        uses: openapi-generators/openapitools-generator-action@v1
+        with:
+          generator: ruby
+          openapi-file: openapi.yaml
+          config-file: .github/openapi-config.yml
+          command-args: -o ./ruby-esi --additional-properties=gemName=ruby-esi,moduleName=ESI,gemVersion=${{ needs.check-version.outputs.esi_version }}
+      
+      - name: Build gem
+        working-directory: ./ruby-esi
+        run: |
+          gem build ruby-esi.gemspec
+      
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+      
+      - name: Commit generated code
+        run: |
+          git add ruby-esi/
+          git commit -m "Generate Ruby ESI gem v${{ needs.check-version.outputs.esi_version }}" || echo "No changes to commit"
+      
+      - name: Create and push tag
+        run: |
+          git tag -a "v${{ needs.check-version.outputs.esi_version }}" -m "Release v${{ needs.check-version.outputs.esi_version }}"
+          git push origin main --tags
+      
+      - name: Publish to RubyGems via Trusted Publishing
+        uses: rubygems/release-gem@v1
+        with:
+          working-directory: ./ruby-esi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.esi_version }}
+          name: Release v${{ needs.check-version.outputs.esi_version }}
+          body: |
+            Automated release of Ruby ESI gem based on EVE Online ESI API version ${{ needs.check-version.outputs.esi_version }}.
+            
+            ## Changes
+            - Generated from OpenAPI spec: https://esi.evetech.net/latest/swagger.json
+            
+            ## Installation
+            ```bash
+            gem install ruby-esi -v ${{ needs.check-version.outputs.esi_version }}
+            ```
+          files: ./ruby-esi/ruby-esi-${{ needs.check-version.outputs.esi_version }}.gem
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
