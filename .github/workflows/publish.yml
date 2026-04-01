@@ -18,6 +18,7 @@ jobs:
     outputs:
       should_build: ${{ steps.compare.outputs.should_build }}
       esi_version: ${{ steps.fetch_version.outputs.version }}
+      compat_date: ${{ steps.fetch_version.outputs.compat_date }}
     
     steps:
       - name: Checkout repository
@@ -30,7 +31,19 @@ jobs:
         run: |
           # Get the latest compatibility date (use today's date to get the most recent version)
           TODAY=$(date +%Y-%m-%d)
-          COMPAT_DATE=$(curl -sI "https://esi.evetech.net/meta/openapi.yaml?compatibility_date=$TODAY" | grep -i "x-compatibility-date:" | awk '{print $2}' | tr -d '\r')
+          COMPAT_DATE=""
+          for attempt in 1 2 3; do
+            COMPAT_DATE=$(curl -sI --retry 3 "https://esi.evetech.net/meta/openapi.yaml?compatibility_date=$TODAY" | grep -i "x-compatibility-date:" | awk '{print $2}' | tr -d '\r\n')
+            if [ -n "$COMPAT_DATE" ]; then
+              break
+            fi
+            echo "Attempt $attempt: failed to get compatibility date, retrying..."
+            sleep 5
+          done
+          if [ -z "$COMPAT_DATE" ]; then
+            echo "::error::Failed to fetch ESI compatibility date after 3 attempts"
+            exit 1
+          fi
           
           # Get API version from the JSON spec (cleaner than YAML)
           API_VERSION=$(curl -s https://esi.evetech.net/latest/swagger.json | jq -r '.info.version')
@@ -62,7 +75,14 @@ jobs:
           ESI_VERSION="${{ steps.fetch_version.outputs.version }}"
           LAST_VERSION="${{ steps.last_version.outputs.version }}"
           FORCE_BUILD="${{ inputs.force_build }}"
-          
+
+          # Validate version format (must be X.Y.YYYY.MM.DD)
+          if ! echo "$ESI_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}$'; then
+            echo "::error::Malformed version: $ESI_VERSION (expected X.Y.YYYY.MM.DD)"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           if [ "$FORCE_BUILD" = "true" ]; then
             echo "Force build requested"
             echo "should_build=true" >> $GITHUB_OUTPUT
